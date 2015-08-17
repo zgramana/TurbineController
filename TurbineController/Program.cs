@@ -2,8 +2,8 @@
 using Microsoft.SPOT;
 using Microsoft.SPOT.Hardware;
 using System.Threading;
-using GHI.Hardware.FEZCerb;
-using Microsoft.SPOT.Hardware.UsbClient;
+using GHIElectronics.NETMF.FEZ;
+using GHIElectronics.NETMF.Hardware;
 
 namespace TurbineController
 {
@@ -20,7 +20,7 @@ namespace TurbineController
             Debug.Print(
                 Resources.GetString(Resources.StringResources.String1));
 
-            var collector = new InterruptPort((Cpu.Pin)Pin.PC0, false, Port.ResistorMode.PullUp, Port.InterruptMode.InterruptEdgeBoth);            
+            var collector = new InterruptPort((Cpu.Pin)FEZ_Pin.Interrupt.Di0, false, Port.ResistorMode.PullUp, Port.InterruptMode.InterruptEdgeBoth);            
             collector.OnInterrupt += collector_OnInterrupt;
 
             while (true)
@@ -52,8 +52,7 @@ namespace TurbineController
                     lastInterval = interval;
                     interval = (sample - lastSample).Ticks / 10000;
 
-                    // TODO: This needs to USB serial out.
-                    Debug.Print((interval > lastInterval ? "+" : "-") + time.Ticks);
+                    Debug.Print(lastInterval + "/" + interval + ", rotation direction: " + (interval > lastInterval ? "+" : "-"));
 
                     // Reset timers.
                     lastInterval = 0;
