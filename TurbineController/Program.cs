@@ -4,63 +4,156 @@ using Microsoft.SPOT.Hardware;
 using System.Threading;
 using GHIElectronics.NETMF.FEZ;
 using GHIElectronics.NETMF.Hardware;
+using GHIElectronics.NETMF.USBClient;
+using System.Text;
 
 namespace TurbineController
 {
     public class Program
     {
-        private static DateTime sample;
-        private static DateTime lastSample;
-        private static long interval;
-        private static long lastInterval;
-        private static bool pulseCodeComplete;
+        private static readonly Pulse leftEngine = new Pulse();
+        private static readonly Pulse rightEngine = new Pulse();
+
+        private static Pulse currentEngine;
+        private static USBC_Keyboard keyboardDevice;
+        private static OutputPort led;
+        private static USBC_CDC serialPort;
 
         public static void Main()
         {
-            Debug.Print(
-                Resources.GetString(Resources.StringResources.String1));
+            Debug.Print(Resources.GetString(Resources.StringResources.String1));
 
-            var collector = new InterruptPort((Cpu.Pin)FEZ_Pin.Interrupt.Di0, false, Port.ResistorMode.PullUp, Port.InterruptMode.InterruptEdgeBoth);            
-            collector.OnInterrupt += collector_OnInterrupt;
+            Cpu.GlitchFilterTime = TimeSpan.FromTicks(10000 * 50);
+
+            //serialPort = USBClientController.StandardDevices.StartCDC_WithDebugging();
+
+            //Write("Started CDC");
+
+            keyboardDevice = USBClientController.StandardDevices.StartKeyboard();
+
+            var leftAnalogEngine = new AnalogIn((AnalogIn.Pin)GHIElectronics.NETMF.FEZ.FEZ_Pin.AnalogIn.An5);
+
+            var leftEngine = new InterruptPort((Cpu.Pin)FEZ_Pin.Interrupt.Di11, false, Port.ResistorMode.PullUp, Port.InterruptMode.InterruptEdgeBoth);
+            leftEngine.OnInterrupt += collector_OnInterrupt;
+            
+            var rightEngine = new InterruptPort((Cpu.Pin)FEZ_Pin.Interrupt.Di12, false, Port.ResistorMode.PullUp, Port.InterruptMode.InterruptEdgeBoth);
+            rightEngine.OnInterrupt += collector_OnInterrupt;
+
+            var stopButton = new InterruptPort((Cpu.Pin)FEZ_Pin.Interrupt.Di37, true, Port.ResistorMode.PullUp, Port.InterruptMode.InterruptEdgeLow);
+            stopButton.OnInterrupt += stopButton_OnInterrupt;
+            
+            var singlePlayerButton = new InterruptPort((Cpu.Pin)FEZ_Pin.Interrupt.Di36, true, Port.ResistorMode.PullUp, Port.InterruptMode.InterruptEdgeLow);
+            singlePlayerButton.OnInterrupt += stopButton_OnInterrupt;
+
+            led = new OutputPort((Cpu.Pin)FEZ_Pin.Digital.LED, false);
+            led.Write(false);
 
             while (true)
             {
                 // We can do other work here, like updating
                 // an LCD display or something.
-                Thread.Sleep(3000);
+                Thread.Sleep(5000);
+                //Debug.Print(leftAnalogEngine.Read().ToString());
+            }
+        }
+
+        private static void Write(string p)
+        {
+            var bytes = Encoding.UTF8.GetBytes(p);
+            //serialPort.Write(bytes, 0, bytes.Length);
+        }
+
+        static void stopButton_OnInterrupt(uint data1, uint data2, DateTime time)
+        {
+            Debug.Print(data1.ToString() + " " + data2.ToString());
+            led.Write(!led.Read());
+            if (USBClientController.GetState() == USBClientController.State.Running)
+            {
+                //Write("Attempting to write a B.");
+                if (data1 == 3)
+                {
+                    keyboardDevice.KeyTap(USBC_Key.B);
+                }
+                else if (data1 == 8)
+                {
+                    keyboardDevice.KeyTap(USBC_Key.S);
+                }
             }
         }
 
         static void collector_OnInterrupt(uint data1, uint data2, DateTime time)
         {
+            // Right Engine: data1 == 41
+            // Left Engine: data1 == 40
+
+            if (data1 == 41)
+            {
+                currentEngine = leftEngine;
+            }
+            else if (data1 == 40)
+            {
+                currentEngine = rightEngine;
+            }
+            else
+            {
+                Debug.Print("Unknown engine: " + data1);
+                return;
+            }
+
             if (data2 == 0) // Edge going low, start of pulse.
             {
-                sample = time;
+                currentEngine.sample = time;
             }
             else            // Edge going high, end of pulse.
             {
-                lastSample = sample;
-                sample = time;
-                pulseCodeComplete = !pulseCodeComplete;
+                currentEngine.lastSample = currentEngine.sample;
+                currentEngine.sample = time;
+                currentEngine.pulseCodeComplete = !currentEngine.pulseCodeComplete;
 
-                if (!pulseCodeComplete)
+                if (!currentEngine.pulseCodeComplete)
                 {
-                    interval = (sample - lastSample).Ticks / 10000;
+                    currentEngine.interval = (currentEngine.sample - currentEngine.lastSample).Ticks / 10000;
                 }
                 else
                 {
-                    lastInterval = interval;
-                    interval = (sample - lastSample).Ticks / 10000;
+                    currentEngine.lastInterval = currentEngine.interval;
+                    currentEngine.interval = (currentEngine.sample - currentEngine.lastSample).Ticks / 10000;
 
-                    Debug.Print(lastInterval + "/" + interval + ", rotation direction: " + (interval > lastInterval ? "+" : "-"));
+                    if (USBClientController.GetState() == USBClientController.State.Running)
+                    {
+                        if (currentEngine.IsForward)
+                        {
+                            Debug.Print("x");
+                            keyboardDevice.KeyTap(USBC_Key.X);
+                        }
+                        else
+                        {
+                            Debug.Print("z");
+                            keyboardDevice.KeyTap(USBC_Key.Z);
+                        }
+                    }
+
+                    Debug.Print(currentEngine.lastInterval + "/" + currentEngine.interval + ", rotation direction: " + (currentEngine.IsForward ? "+" : "-"));
 
                     // Reset timers.
-                    lastInterval = 0;
-                    interval = 0;
-                    sample = DateTime.MinValue;
-                    lastSample = DateTime.MinValue;
+                    currentEngine.lastInterval = 0;
+                    currentEngine.interval = 0;
+                    currentEngine.sample = DateTime.MinValue;
+                    currentEngine.lastSample = DateTime.MinValue;
                 }
             }
+        }
+
+        class Pulse
+        {
+            public DateTime sample;
+            public DateTime lastSample;
+            public long interval;
+            public long lastInterval;
+            public bool pulseCodeComplete;
+
+            public bool IsForward { get { return currentEngine.interval > currentEngine.lastInterval; } }
+
         }
     }
 }
