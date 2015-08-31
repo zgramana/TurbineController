@@ -18,6 +18,7 @@ namespace TurbineController
         private static USBC_Keyboard keyboardDevice;
         private static OutputPort led;
         private static USBC_CDC serialPort;
+        private static USBClientController.State state;
 
         public static void Main()
         {
@@ -67,7 +68,10 @@ namespace TurbineController
         {
             Debug.Print(data1.ToString() + " " + data2.ToString());
             led.Write(!led.Read());
-            if (USBClientController.GetState() == USBClientController.State.Running)
+
+            state = USBClientController.GetState();
+
+            if (state != USBClientController.State.Stopped && state != USBClientController.State.Suspended)
             {
                 //Write("Attempting to write a B.");
                 if (data1 == 3)
