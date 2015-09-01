@@ -23,6 +23,7 @@ namespace TurbineController
         public static void Main()
         {
             Debug.Print(Resources.GetString(Resources.StringResources.String1));
+            Debug.Print(Resources.GetString(Resources.StringResources.String1));
 
             Cpu.GlitchFilterTime = TimeSpan.FromTicks(10000 * 50);
 
@@ -30,7 +31,17 @@ namespace TurbineController
 
             //Write("Started CDC");
 
-            keyboardDevice = USBClientController.StandardDevices.StartKeyboard();
+            state = USBClientController.GetState();
+
+            if (state == USBClientController.State.Running)
+            {
+                // We're currently debugging.
+                keyboardDevice = null;
+            }
+            else
+            {
+                keyboardDevice = USBClientController.StandardDevices.StartKeyboard();
+            }
 
             var leftAnalogEngine = new AnalogIn((AnalogIn.Pin)GHIElectronics.NETMF.FEZ.FEZ_Pin.AnalogIn.An5);
 
@@ -68,6 +79,11 @@ namespace TurbineController
         {
             Debug.Print(data1.ToString() + " " + data2.ToString());
             led.Write(!led.Read());
+
+            if (keyboardDevice == null)
+            {
+                return;
+            }
 
             state = USBClientController.GetState();
 
