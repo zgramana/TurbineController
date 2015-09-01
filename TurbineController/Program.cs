@@ -125,15 +125,15 @@ namespace TurbineController
 
                     if (USBClientController.GetState() == USBClientController.State.Running)
                     {
-                        if (currentEngine.IsForward)
+                        if (currentEngine == leftEngine)
                         {
                             Debug.Print("x");
                             keyboardDevice.KeyTap(USBC_Key.X);
                         }
                         else
                         {
-                            Debug.Print("z");
-                            keyboardDevice.KeyTap(USBC_Key.Z);
+                            Debug.Print(".");
+                            keyboardDevice.KeyTap(USBC_Key.Period);
                         }
                     }
 
